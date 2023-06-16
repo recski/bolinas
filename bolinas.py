@@ -46,6 +46,7 @@ if __name__ == "__main__":
     direction.add_argument("-f","--forward", action="store_true", default=True, help="Apply the synchronous HRG left-to-right (default)")
     direction.add_argument("-r","--backward", action="store_true", default=False, help="Apply the synchronous HRG right-to-left.")
     direction.add_argument("-b","--bitext", action="store_true", default=False, help="Parse pairs of objects from an input file with alternating lines.")
+    direction.add_argument("-P","--partial", action="store_true", default=False, help="return partial parses")
     argparser.add_argument("-ot","--output_type", type=str, default="derived", help="Set the type of the output to be produced for each object in the input file. \n'forest' produces parse forests.\n'derivation' produces k-best derivations.\n'derived' produces k-best derived objects (default).")
     mode = argparser.add_mutually_exclusive_group()
     mode.add_argument("-g", type=int, default=0, const=5, nargs='?', help ="Generate G random derivations from the grammar stochastically. Cannot be used with -k.")
@@ -201,7 +202,7 @@ if __name__ == "__main__":
         # Otherwise set up the correct parser and parser options 
         parser = parser_class(grammar)
 
-        if grammar.rhs2_type is None and config.output_type == "derived" and not config.g:
+        if grammar.rhs2_type is None and config.output_type == "derived" and not config.g and not config.partial:
             log.info('Printing derivation trees for HRG.')
             config.output_type = "derivation"
 
@@ -221,7 +222,7 @@ if __name__ == "__main__":
                 else: 
                     parse_generator = parser.parse_strings(x.strip().split() for x in fileinput.input(config.input_file))
             else: 
-                parse_generator = parser.parse_graphs(Hgraph.from_string(x) for x in fileinput.input(config.input_file))
+                parse_generator = parser.parse_graphs((Hgraph.from_string(x) for x in fileinput.input(config.input_file)), partial=config.partial)
         
         # Process input (if any) and produce desired output 
         if config.input_file:
@@ -229,6 +230,7 @@ if __name__ == "__main__":
             # Run the parser for each graph in the input
             for chart in parse_generator:
                 # Produce Tiburon format derivation forests
+                log.info('output type:', config.output_type)
                 if config.output_type == "forest":
                     output_file = open("%s_%i.rtg" % (config.output_file, count), 'wa')
                     output_file.write(output.format_tiburon(chart))
@@ -251,7 +253,7 @@ if __name__ == "__main__":
                     kbest = chart.kbest('START', config.k)
                     if kbest and kbest < config.k: 
                         log.info("Found only %i derivations." % len(kbest))
-                    if grammar.rhs2_type == "hypergraph":
+                    if grammar.rhs2_type == "hypergraph" or config.partial:
                         for score, derivation in kbest:
                             n_score = score if logprob else math.exp(score)
                             try:

@@ -23,13 +23,13 @@ class Parser:
     self.grammar = grammar
     self.nodelabels = grammar.nodelabels 
 
-  def parse_graphs(self, graph_iterator):
+  def parse_graphs(self, graph_iterator, partial=False):
       """
       Parse all the graphs in graph_iterator.
       This is a generator.
       """
       for graph in graph_iterator: 
-          raw_chart = self.parse(None, graph)
+          raw_chart = self.parse(None, graph, partial=partial)
           # The raw chart contains parser operations, need to decode the parse forest from this 
           yield cky_chart(raw_chart)
 
@@ -219,7 +219,7 @@ class Parser:
       # TODO return partial chart
       return chart
 
-  def parse(self, string, graph):
+  def parse(self, string, graph, partial=False):
       """
       Parses the given string and/or graph.
       """
@@ -304,6 +304,9 @@ class Parser:
           if self.successful_parse(string, graph, item, string_size, graph_size):
               chart['START'].add((item,))
               success = True
+          elif partial and self.grammar.start_symbol == item.rule.symbol:
+            chart['START'].add((item,))
+            log.debug('partial item:', item)
 
           # add to nonterminal lookup
           nonterminal_lookup[item.rule.symbol].add(item)

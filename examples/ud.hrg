@@ -1,0 +1,2 @@
+S -> (. :NOUN . :det (. :DET .) :nsubj (a1. :A$) :nmod (a2. :A$ :case (. :ADP .)));   1.0 # 1
+A -> (. :PROPN .); 1.0 # 2

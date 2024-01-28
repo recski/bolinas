@@ -258,7 +258,10 @@ if __name__ == "__main__":
                             n_score = score if logprob else math.exp(score)
                             try:
                                 output_file.write
-                                l2s.append("%s\t#%g\n" % (output.apply_graph_derivation(derivation).to_string(newline = False), n_score))
+                                l2s.append("%s\t#%g\n" % (output.format_derivation(derivation), n_score))
+                                l2s.append("%s\t#%g\n" % (output.apply_graph_derivation(derivation)
+                                                          .to_string(newline = False), n_score))
+                                l2s.append("%s\n" % output.print_shifted(derivation))
                             except DerivationException,e:
                                 log.err("Could not construct derivation: '%s'. Skipping." % e.message)
                                 l2s.append("")

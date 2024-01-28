@@ -1,6 +1,7 @@
 '''
 Methods to format Bolinas output.
 '''
+import re
 
 from common.hgraph.hgraph import Hgraph
 from common.cfg import NonterminalLabel
@@ -8,6 +9,20 @@ from common import log
 from common.exceptions import DerivationException
 import math
  
+
+def print_shifted(derivation):
+    """
+    Print the recognized subgraph with the original node ids.
+    """
+    final_item = derivation[1]["START"][0]
+    node_to_concepts = dict(zip(final_item.nodeset, [""]*len(final_item.nodeset)))
+    triples = []
+    for v, l, u in final_item.shifted:
+        triples.append((v[0], l, zip(*u)[0]))
+    graph = Hgraph.from_triples(triples, node_to_concepts)
+    return re.sub("(\n|\s+)"," ", graph.to_bolinas_str(nodeids=True))
+
+
 def walk_derivation(derivation, combiner, leaf):
     """
     Traverse a derivation as returned by parser.item.Chart.kbest. Apply combiner to 

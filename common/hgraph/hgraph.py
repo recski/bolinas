@@ -824,8 +824,13 @@ class Hgraph(defaultdict):
         return triples 
 
     def __str__(self):
+        return self.to_bolinas_str()
 
-        reentrant_nodes = self.get_reentrant_nodes()
+    def to_bolinas_str(self, nodeids=False):
+
+        nodeids_to_print = self.get_reentrant_nodes()
+        if nodeids:
+            nodeids_to_print = self.get_nodes()
 
         def extractor(node, firsthit, leaf):
             if node is None:
@@ -840,16 +845,16 @@ class Hgraph(defaultdict):
                         if node in self.node_to_concepts and self.node_to_concepts[node]: 
                             concept = self.node_to_concepts[node]
                             if node in self.external_nodes:    
-                                return "%s%s*%i " % ("%s." % node if node in reentrant_nodes else "", concept, self.external_nodes[node])
+                                return "%s%s*%i " % ("%s." % node if node in nodeids_to_print else "", concept, self.external_nodes[node])
                             else:
-                                return "%s%s " % ("%s." % node if node in reentrant_nodes else "", concept)
+                                return "%s%s " % ("%s." % node if node in nodeids_to_print else "", concept)
                         else:
                             if node in self.external_nodes:    
-                                return "%s.*%i " % (node if node in reentrant_nodes else "", self.external_nodes[node])
+                                return "%s.*%i " % (node if node in nodeids_to_print else "", self.external_nodes[node])
                             else:
-                                return "%s." % (node if node in reentrant_nodes else "")
+                                return "%s." % (node if node in nodeids_to_print else "")
                     else:
-                        return "%s." % (node if node in reentrant_nodes else "") 
+                        return "%s." % (node if node in nodeids_to_print else "") 
 
         def combiner(nodestr, childmap, depth):
             childstr = " ".join(["\n%s %s %s" % (depth * "\t", ":%s" % rel if rel else "", child) for rel, child in sorted(childmap.items())])            

@@ -290,9 +290,21 @@ class Parser:
 
       # keep track of whether we found any complete derivation
       success = False
+      
+      max_queue_size = 0
+      max_queue_diff_comp = 0
+      max_queue_diff_outside_nt = 0
+      max_queue_diff_shift = 0
+      steps = 0
 
       # parse
       while queue:
+          
+        steps += 1
+        
+        if len(queue) > max_queue_size:
+            max_queue_size = len(queue)
+            
         item = queue.popleft()
         pending.remove(item)
         visited.add(item)
@@ -317,16 +329,21 @@ class Parser:
           # we saw them, and are waiting for the current item. The reverse_lookup
           # indexes all items by their outside symbol, so we re-append to the queue
           # all items looking for something with the current item's symbol.
+          before = len(queue)
           for ritem in reverse_lookup[item.rule.symbol]:
             if ritem not in pending:
               queue.append(ritem)
               pending.add(ritem)
+          after = len(queue)
+          if (after - before) > max_queue_diff_comp:
+              max_queue_diff_comp = after - before
 
         else:
           if item.outside_is_nonterminal:
             # complete
             reverse_lookup[item.outside_symbol].add(item)
 
+            before = len(queue)
             for oitem in nonterminal_lookup[item.outside_symbol]:
               log.debug("  oitem:", oitem)
               if (item, oitem) in attempted:
@@ -342,6 +359,9 @@ class Parser:
               if nitem not in pending and nitem not in visited:
                 queue.append(nitem)
                 pending.add(nitem)
+            after = len(queue)
+            if (after - before) > max_queue_diff_outside_nt:
+                max_queue_diff_outside_nt = after - before
 
           else:
             # shift
@@ -365,17 +385,26 @@ class Parser:
                   edge_terminal_lookup[item.outside_edge] if
                   item.can_shift(edge)]
 
+            before = len(queue)
             for nitem in new_items:
               log.debug('  shift', nitem, nitem.shifted)
               chart[nitem].add((item,))
               if nitem not in pending and nitem not in visited:
                 queue.append(nitem)
                 pending.add(nitem)
+            after = len(queue)
+            if (after - before) > max_queue_diff_shift:
+                max_queue_diff_shift = after - before
 
       if success:
         log.chatter('  success!')
       etime = time.clock() - start_time
       log.chatter('done in %.2fs' % etime)
+      print "Max queue size: %d" % max_queue_size
+      print "Max queue diff comp: %d" % max_queue_diff_comp
+      print "Max queue diff outside nt: %d" % max_queue_diff_outside_nt
+      print "Max queue diff shift: %d" % max_queue_diff_shift
+      print "Steps: %d" % steps
 
       # TODO return partial chart
       return chart

@@ -81,6 +81,21 @@ def filter_chart(chart, pa_nodes, chart_filter, boundary_value):
     return ret
 
 
+def get_labels(derivation):
+    if type(derivation) is not tuple:
+        if derivation == "START" or derivation.rule.symbol == "S":
+            return {}
+        return {derivation.mapping['_1'].split('n')[1]: derivation.rule.symbol}
+    else:
+        ret = {}
+        items = [c for (_, c) in derivation[1].items()] + [derivation[0]]
+        for item in items:
+            for (k, v) in get_labels(item).items():
+                assert k not in ret
+                ret[k] = v
+        return ret
+
+
 def main(in_dir, first, last, grammar_file, chart_filters, parser_type, boundary_nodes, k):
     logprob = False
     nodelabels = True
@@ -111,12 +126,15 @@ def main(in_dir, first, last, grammar_file, chart_filters, parser_type, boundary
         with open(os.path.join(sen_dir, "sen" + str(i) + "_pa_nodes.json")) as f:
             pa_nodes = json.load(f)
         match_file = os.path.join(sen_dir, "sen" + str(i) + "_matches.graph")
+        labels_file = os.path.join(sen_dir, "sen" + str(i) + "_predicted_labels.txt")
+        
 
         parse_generator = parser.parse_graphs(
             (Hgraph.from_string(x) for x in fileinput.input(graph_file)), partial=True)
     
         for chart in parse_generator:
-            lines = []
+            matches_lines = []
+            labels_lines = []
             matches_output = defaultdict(list)
             counters = get_counters(chart, pa_nodes, chart_filters)
             for chart_filter in chart_filters:
@@ -136,13 +154,16 @@ def main(in_dir, first, last, grammar_file, chart_filters, parser_type, boundary
                 kbest = filtered_chart.kbest('START', k)
                 if kbest and kbest < k:
                     log.info("Found only %i derivations." % len(kbest))
-                lines.append("%s\n" % chart_filter)
+                matches_lines.append("%s\n" % chart_filter)
+                labels_lines.append("%s\n" % chart_filter)
                 for score, derivation in kbest:
                     n_score = score if logprob else math.exp(score)
                     try:
                         shifted_derivation = output.print_shifted(derivation)
                         matches_output[chart_filter].append(shifted_derivation)
-                        lines.append("%s\n" % shifted_derivation)
+                        matches_lines.append("%s\n" % shifted_derivation)
+                        labels = get_labels(derivation)
+                        labels_lines.append("%s\n" % json.dumps(labels))
  
                         print "\n%s" % chart_filter
                         print "%s\t#%g" % (output.format_derivation(derivation), n_score)
@@ -151,7 +172,9 @@ def main(in_dir, first, last, grammar_file, chart_filters, parser_type, boundary
                     except DerivationException, e:
                         log.err("Could not construct derivation: '%s'. Skipping." % e.message)
             with open(match_file, "w") as f:
-                f.writelines(lines)
+                f.writelines(matches_lines)
+            with open(labels_file, "w") as f:
+                f.writelines(labels_lines)
             
 
 

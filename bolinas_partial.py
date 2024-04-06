@@ -96,6 +96,21 @@ def get_labels(derivation):
         return ret
 
 
+def get_rules(derivation):
+    if type(derivation) is not tuple:
+        if derivation == "START":
+            return {}
+        return {derivation.rule.rule_id: str(derivation.rule)}
+    else:
+        ret = {}
+        items = [c for (_, c) in derivation[1].items()] + [derivation[0]]
+        for item in items:
+            for (k, v) in get_rules(item).items():
+                assert k not in ret or v == ret[k]
+                ret[k] = v
+        return ret
+
+
 def main(in_dir, first, last, grammar_file, chart_filters, parser_type, boundary_nodes, k):
     logprob = False
     nodelabels = True
@@ -127,7 +142,7 @@ def main(in_dir, first, last, grammar_file, chart_filters, parser_type, boundary
             pa_nodes = json.load(f)
         match_file = os.path.join(sen_dir, "sen" + str(i) + "_matches.graph")
         labels_file = os.path.join(sen_dir, "sen" + str(i) + "_predicted_labels.txt")
-        
+        rules_file = os.path.join(sen_dir, "sen" + str(i) + "_derivation.txt")
 
         parse_generator = parser.parse_graphs(
             (Hgraph.from_string(x) for x in fileinput.input(graph_file)), partial=True)
@@ -135,6 +150,7 @@ def main(in_dir, first, last, grammar_file, chart_filters, parser_type, boundary
         for chart in parse_generator:
             matches_lines = []
             labels_lines = []
+            rules_lines = []
             matches_output = defaultdict(list)
             counters = get_counters(chart, pa_nodes, chart_filters)
             for chart_filter in chart_filters:
@@ -156,17 +172,27 @@ def main(in_dir, first, last, grammar_file, chart_filters, parser_type, boundary
                     log.info("Found only %i derivations." % len(kbest))
                 matches_lines.append("%s\n" % chart_filter)
                 labels_lines.append("%s\n" % chart_filter)
+                rules_lines.append("%s\n" % chart_filter)
                 for score, derivation in kbest:
                     n_score = score if logprob else math.exp(score)
                     try:
                         shifted_derivation = output.print_shifted(derivation)
                         matches_output[chart_filter].append(shifted_derivation)
-                        matches_lines.append("%s\n" % shifted_derivation)
+                        format_derivation = output.format_derivation(derivation)
                         labels = get_labels(derivation)
+                        rules = get_rules(derivation)
+                        
+                        matches_lines.append("%s\n" % shifted_derivation)
                         labels_lines.append("%s\n" % json.dumps(labels))
+                        rules_lines.append("%s\n" % format_derivation)
+                        for grammar_nr, rule_str in sorted(rules.items()):
+                            prob = rule_str.split(';')[1].strip()
+                            rule = rule_str.split(';')[0].strip()
+                            rules_lines.append("%s\t%.2f\t%s\n" % (grammar_nr, float(prob), rule))
+                        rules_lines.append("\n")
  
                         print "\n%s" % chart_filter
-                        print "%s\t#%g" % (output.format_derivation(derivation), n_score)
+                        print "%s\t#%g" % (format_derivation, n_score)
                         print "%s\t#%g" % (output.apply_graph_derivation(derivation).to_string(newline=False), n_score)
                         print "%s" % shifted_derivation
                     except DerivationException, e:
@@ -175,6 +201,8 @@ def main(in_dir, first, last, grammar_file, chart_filters, parser_type, boundary
                 f.writelines(matches_lines)
             with open(labels_file, "w") as f:
                 f.writelines(labels_lines)
+            with open(rules_file, "w") as f:
+                f.writelines(rules_lines)
             
 
 

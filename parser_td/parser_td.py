@@ -81,8 +81,17 @@ class ParserTD:
           assert leaf not in rule.tree_to_edge
 
       success = False
+      
+      max_queue_size = 0
+      steps = 0
 
       while queue:
+          
+        steps += 1
+        
+        if len(queue) > max_queue_size:
+            max_queue_size = len(queue)
+        
         item = queue.popleft()
         pending.remove(item)
         visited.add(item)
@@ -155,6 +164,10 @@ class ParserTD:
 
       etime = time.clock() - start_time
       log.chatter('done in %.2fs' % etime)
+      
+      print "Max queue size: %d" % max_queue_size
+      print "Steps: %d" % steps
+      
       return chart
 
     def is_goal(self, item):

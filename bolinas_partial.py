@@ -115,10 +115,10 @@ def main(in_dir, first, last, grammar_file, chart_filters, parser_type, boundary
     logprob = False
     nodelabels = True
     backward = False
-    
+
     for filter in chart_filters:
         assert filter in ['basic', 'max', 'prec', 'rec']
-    
+
     with open(grammar_file, 'ra') as f:
         if parser_type == 'td':
             parser_class = ParserTD
@@ -136,13 +136,18 @@ def main(in_dir, first, last, grammar_file, chart_filters, parser_type, boundary
     for i in get_range(in_dir, first, last):
         print "\nProcessing sen %d\n" % i
         sen_dir = os.path.join(in_dir, str(i))
-        
-        graph_file = os.path.join(sen_dir, "sen" + str(i) + ".graph")
-        with open(os.path.join(sen_dir, "sen" + str(i) + "_pa_nodes.json")) as f:
+
+        preproc_dir = os.path.join(sen_dir, "preproc")
+        graph_file = os.path.join(preproc_dir, "sen" + str(i) + ".graph")
+        with open(os.path.join(preproc_dir, "sen" + str(i) + "_pa_nodes.json")) as f:
             pa_nodes = json.load(f)
-        match_file = os.path.join(sen_dir, "sen" + str(i) + "_matches.graph")
-        labels_file = os.path.join(sen_dir, "sen" + str(i) + "_predicted_labels.txt")
-        rules_file = os.path.join(sen_dir, "sen" + str(i) + "_derivation.txt")
+
+        bolinas_dir = os.path.join(sen_dir, "bolinas")
+        if not os.path.exists(bolinas_dir):
+            os.makedirs(bolinas_dir)
+        match_file = os.path.join(bolinas_dir, "sen" + str(i) + "_matches.graph")
+        labels_file = os.path.join(bolinas_dir, "sen" + str(i) + "_predicted_labels.txt")
+        rules_file = os.path.join(bolinas_dir, "sen" + str(i) + "_derivation.txt")
 
         parse_generator = parser.parse_graphs(
             (Hgraph.from_string(x) for x in fileinput.input(graph_file)), partial=True)
@@ -203,7 +208,6 @@ def main(in_dir, first, last, grammar_file, chart_filters, parser_type, boundary
                 f.writelines(labels_lines)
             with open(rules_file, "w") as f:
                 f.writelines(rules_lines)
-            
 
 
 if __name__ == "__main__":

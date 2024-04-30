@@ -23,13 +23,13 @@ class Parser:
     self.grammar = grammar
     self.nodelabels = grammar.nodelabels 
 
-  def parse_graphs(self, graph_iterator, partial=False):
+  def parse_graphs(self, graph_iterator, partial=False, max_steps=None):
       """
       Parse all the graphs in graph_iterator.
       This is a generator.
       """
       for graph in graph_iterator: 
-          raw_chart = self.parse(None, graph, partial=partial)
+          raw_chart = self.parse(None, graph, partial=partial, max_steps=max_steps)
           # The raw chart contains parser operations, need to decode the parse forest from this 
           yield cky_chart(raw_chart)
 
@@ -219,7 +219,7 @@ class Parser:
       # TODO return partial chart
       return chart
 
-  def parse(self, string, graph, partial=False):
+  def parse(self, string, graph, partial=False, max_steps=None):
       """
       Parses the given string and/or graph.
       """
@@ -299,102 +299,104 @@ class Parser:
 
       # parse
       while queue:
-          
-        steps += 1
-        
-        if len(queue) > max_queue_size:
-            max_queue_size = len(queue)
-            
-        item = queue.popleft()
-        pending.remove(item)
-        visited.add(item)
-        log.debug('handling', item)
+          if max_steps and steps >= max_steps:
+            break
 
-        if item.closed:
-          log.debug('  is closed.')
-          # check if it's a complete derivation
-          if self.successful_parse(string, graph, item, string_size, graph_size):
-              chart['START'].add((item,))
-              success = True
-          elif partial and self.grammar.start_symbol == item.rule.symbol:
-            chart['START'].add((item,))
-            log.debug('partial item:', item)
+          steps += 1
 
-          # add to nonterminal lookup
-          nonterminal_lookup[item.rule.symbol].add(item)
+          if len(queue) > max_queue_size:
+              max_queue_size = len(queue)
 
-          # wake up any containing rules
-          # Unlike in ordinary state-space search, it's possible that we will have
-          # to re-visit items which couldn't be merged with anything the first time
-          # we saw them, and are waiting for the current item. The reverse_lookup
-          # indexes all items by their outside symbol, so we re-append to the queue
-          # all items looking for something with the current item's symbol.
-          before = len(queue)
-          for ritem in reverse_lookup[item.rule.symbol]:
-            if ritem not in pending:
-              queue.append(ritem)
-              pending.add(ritem)
-          after = len(queue)
-          if (after - before) > max_queue_diff_comp:
-              max_queue_diff_comp = after - before
+          item = queue.popleft()
+          pending.remove(item)
+          visited.add(item)
+          log.debug('handling', item)
 
-        else:
-          if item.outside_is_nonterminal:
-            # complete
-            reverse_lookup[item.outside_symbol].add(item)
+          if item.closed:
+              log.debug('  is closed.')
+              # check if it's a complete derivation
+              if self.successful_parse(string, graph, item, string_size, graph_size):
+                  chart['START'].add((item,))
+                  success = True
+              elif partial and self.grammar.start_symbol == item.rule.symbol:
+                  chart['START'].add((item,))
+                  log.debug('partial item:', item)
 
-            before = len(queue)
-            for oitem in nonterminal_lookup[item.outside_symbol]:
-              log.debug("  oitem:", oitem)
-              if (item, oitem) in attempted:
-                # don't repeat combinations we've tried before
-                continue
-              attempted.add((item, oitem))
-              if not item.can_complete(oitem):
-                log.debug("    fail")
-                continue
-              log.debug("    ok")
-              nitem = item.complete(oitem)
-              chart[nitem].add((item, oitem))
-              if nitem not in pending and nitem not in visited:
-                queue.append(nitem)
-                pending.add(nitem)
-            after = len(queue)
-            if (after - before) > max_queue_diff_outside_nt:
-                max_queue_diff_outside_nt = after - before
+              # add to nonterminal lookup
+              nonterminal_lookup[item.rule.symbol].add(item)
+
+              # wake up any containing rules
+              # Unlike in ordinary state-space search, it's possible that we will have
+              # to re-visit items which couldn't be merged with anything the first time
+              # we saw them, and are waiting for the current item. The reverse_lookup
+              # indexes all items by their outside symbol, so we re-append to the queue
+              # all items looking for something with the current item's symbol.
+              before = len(queue)
+              for ritem in reverse_lookup[item.rule.symbol]:
+                  if ritem not in pending:
+                      queue.append(ritem)
+                      pending.add(ritem)
+              after = len(queue)
+              if (after - before) > max_queue_diff_comp:
+                  max_queue_diff_comp = after - before
 
           else:
-            # shift
-            if string and graph:
-              if not item.outside_word_is_nonterminal:
-                new_items = [item.shift_word(item.outside_word, index) for index in
-                    word_terminal_lookup[item.outside_word] if
-                    item.can_shift_word(item.outside_word, index)]
-              else:
-                assert not item.outside_edge_is_nonterminal
-                new_items = [item.shift_edge(edge) for edge in
-                    edge_terminal_lookup[item.outside_edge] if
-                    item.can_shift_edge(edge)]               
-            elif string:
-              new_items = [item.shift(item.outside_word, index) for index in
-                  word_terminal_lookup[item.outside_word] if
-                  item.can_shift(item.outside_word, index)]
-            else:
-              assert graph
-              new_items = [item.shift(edge) for edge in
-                  edge_terminal_lookup[item.outside_edge] if
-                  item.can_shift(edge)]
+              if item.outside_is_nonterminal:
+                  # complete
+                  reverse_lookup[item.outside_symbol].add(item)
 
-            before = len(queue)
-            for nitem in new_items:
-              log.debug('  shift', nitem, nitem.shifted)
-              chart[nitem].add((item,))
-              if nitem not in pending and nitem not in visited:
-                queue.append(nitem)
-                pending.add(nitem)
-            after = len(queue)
-            if (after - before) > max_queue_diff_shift:
-                max_queue_diff_shift = after - before
+                  before = len(queue)
+                  for oitem in nonterminal_lookup[item.outside_symbol]:
+                      log.debug("  oitem:", oitem)
+                      if (item, oitem) in attempted:
+                          # don't repeat combinations we've tried before
+                          continue
+                      attempted.add((item, oitem))
+                      if not item.can_complete(oitem):
+                          log.debug("    fail")
+                          continue
+                      log.debug("    ok")
+                      nitem = item.complete(oitem)
+                      chart[nitem].add((item, oitem))
+                      if nitem not in pending and nitem not in visited:
+                          queue.append(nitem)
+                          pending.add(nitem)
+                  after = len(queue)
+                  if (after - before) > max_queue_diff_outside_nt:
+                      max_queue_diff_outside_nt = after - before
+
+              else:
+                  # shift
+                  if string and graph:
+                      if not item.outside_word_is_nonterminal:
+                          new_items = [item.shift_word(item.outside_word, index) for index in
+                                       word_terminal_lookup[item.outside_word] if
+                                       item.can_shift_word(item.outside_word, index)]
+                      else:
+                          assert not item.outside_edge_is_nonterminal
+                          new_items = [item.shift_edge(edge) for edge in
+                                       edge_terminal_lookup[item.outside_edge] if
+                                       item.can_shift_edge(edge)]
+                  elif string:
+                      new_items = [item.shift(item.outside_word, index) for index in
+                                   word_terminal_lookup[item.outside_word] if
+                                   item.can_shift(item.outside_word, index)]
+                  else:
+                      assert graph
+                      new_items = [item.shift(edge) for edge in
+                                   edge_terminal_lookup[item.outside_edge] if
+                                   item.can_shift(edge)]
+
+                  before = len(queue)
+                  for nitem in new_items:
+                      log.debug('  shift', nitem, nitem.shifted)
+                      chart[nitem].add((item,))
+                      if nitem not in pending and nitem not in visited:
+                          queue.append(nitem)
+                          pending.add(nitem)
+                  after = len(queue)
+                  if (after - before) > max_queue_diff_shift:
+                      max_queue_diff_shift = after - before
 
       if success:
         log.chatter('  success!')

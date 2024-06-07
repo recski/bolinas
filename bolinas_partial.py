@@ -14,6 +14,7 @@ from common import log
 from common import output
 from common.exceptions import DerivationException
 from common.grammar import Grammar
+from common.oie import get_labels
 from parser.parser import Parser
 from parser.vo_rule import VoRule
 from parser_td.td_rule import TdRule
@@ -81,21 +82,6 @@ def filter_chart(chart, pa_nodes, chart_filter, boundary_value):
     return ret
 
 
-def get_labels(derivation):
-    if type(derivation) is not tuple:
-        if derivation == "START" or derivation.rule.symbol == "S":
-            return {}
-        return {derivation.mapping['_1'].split('n')[1]: derivation.rule.symbol}
-    else:
-        ret = {}
-        items = [c for (_, c) in derivation[1].items()] + [derivation[0]]
-        for item in items:
-            for (k, v) in get_labels(item).items():
-                assert k not in ret
-                ret[k] = v
-        return ret
-
-
 def get_rules(derivation):
     if type(derivation) is not tuple:
         if derivation == "START":
@@ -150,9 +136,12 @@ def main(in_dir, first, last, grammar_file, chart_filters, parser_type, boundary
         rules_file = os.path.join(bolinas_dir, "sen" + str(i) + "_derivation.txt")
 
         parse_generator = parser.parse_graphs(
-            (Hgraph.from_string(x) for x in fileinput.input(graph_file)), partial=True)
+            (Hgraph.from_string(x) for x in fileinput.input(graph_file)), partial=True, max_steps=10000)
     
         for chart in parse_generator:
+            if "START" not in chart:
+                print "No derivation found"
+                continue
             matches_lines = []
             labels_lines = []
             rules_lines = []

@@ -161,24 +161,20 @@ def main(in_dir, first, last, grammar_file, chart_filters, parser_type, boundary
                     filtered_chart = filter_chart(filtered_chart, pa_nodes, "prec", sorted(counter["prec"].items())[0][0])
                 else:
                     filtered_chart = copy(chart)
-                
+
                 kbest_unique = {}
-                i = 1
-                while len(kbest_unique.keys()) < k:
-                    if i > 1000:
+                kbest = filtered_chart.kbest('START', k_max)
+                for score, derivation in kbest:
+                    final_item = derivation[1]["START"][0]
+                    nodes = sorted(list(final_item.nodeset), key=lambda node: int(node[1:]))
+                    nodes_str = " ".join(nodes)
+                    if nodes_str not in kbest_unique:
+                        kbest_unique[nodes_str] = (score, derivation)
+                    if len(kbest_unique.keys()) >= k:
                         break
-                    kbest = filtered_chart.kbest('START', i)
-                    kbest_unique = {}
-                    for score, derivation in kbest:
-                        final_item = derivation[1]["START"][0]
-                        nodes = sorted(list(final_item.nodeset), key=lambda node: int(node[1:]))
-                        nodes_str = " ".join(nodes)
-                        if nodes_str not in kbest_unique:
-                            kbest_unique[nodes_str] = (score, derivation)
-                    i += 1
-                print "K-best iters: %d" % i
-                if kbest_unique and kbest_unique < k:
-                    log.info("Found only %i derivations." % len(kbest_unique))
+                if len(kbest_unique.keys()) < k:
+                    log.info("Found only %i derivations." % len(kbest_unique.keys()))
+
                 matches_lines.append("%s\n" % chart_filter)
                 labels_lines.append("%s\n" % chart_filter)
                 rules_lines.append("%s\n" % chart_filter)
@@ -190,7 +186,7 @@ def main(in_dir, first, last, grammar_file, chart_filters, parser_type, boundary
                         format_derivation = output.format_derivation(derivation)
                         labels = get_labels(derivation)
                         rules = get_rules(derivation)
- 
+
                         matches_lines.append("%s\n" % shifted_derivation)
                         labels_lines.append("%s\n" % json.dumps(labels))
                         rules_lines.append("%s\n" % format_derivation)
@@ -199,7 +195,7 @@ def main(in_dir, first, last, grammar_file, chart_filters, parser_type, boundary
                             rule = rule_str.split(';')[0].strip()
                             rules_lines.append("%s\t%.2f\t%s\n" % (grammar_nr, float(prob), rule))
                         rules_lines.append("\n")
- 
+
                         print "\n%s" % nodes
                         print "\n%s" % chart_filter
                         print "%s\t#%g" % (format_derivation, n_score)

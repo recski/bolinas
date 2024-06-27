@@ -161,13 +161,25 @@ def main(in_dir, first, last, grammar_file, chart_filters, parser_type, boundary
                 else:
                     filtered_chart = copy(chart)
                 
-                kbest = filtered_chart.kbest('START', k)
-                if kbest and kbest < k:
-                    log.info("Found only %i derivations." % len(kbest))
+                kbest_unique = []
+                i = 1
+                while len(kbest_unique) < k:
+                    if i > 100:
+                        break
+                    kbest = filtered_chart.kbest('START', i)
+                    kbest_nodes = []
+                    for score, derivation in kbest:
+                        final_item = derivation[1]["START"][0]
+                        nodes = sorted(list(final_item.nodeset), key=lambda node: int(node[1:]))
+                        kbest_nodes.append(nodes)
+                    kbest_unique = set(tuple(x) for x in kbest_nodes)
+                    i += 1
+                if kbest_unique and kbest_unique < k:
+                    log.info("Found only %i derivations." % len(kbest_unique))
                 matches_lines.append("%s\n" % chart_filter)
                 labels_lines.append("%s\n" % chart_filter)
                 rules_lines.append("%s\n" % chart_filter)
-                for score, derivation in kbest:
+                for score, derivation in kbest_unique:
                     n_score = score if logprob else math.exp(score)
                     try:
                         shifted_derivation = output.print_shifted(derivation)
@@ -175,7 +187,7 @@ def main(in_dir, first, last, grammar_file, chart_filters, parser_type, boundary
                         format_derivation = output.format_derivation(derivation)
                         labels = get_labels(derivation)
                         rules = get_rules(derivation)
-                        
+ 
                         matches_lines.append("%s\n" % shifted_derivation)
                         labels_lines.append("%s\n" % json.dumps(labels))
                         rules_lines.append("%s\n" % format_derivation)

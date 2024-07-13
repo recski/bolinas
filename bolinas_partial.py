@@ -4,6 +4,7 @@ import json
 import os.path
 import fileinput
 import math
+import time
 from argparse import ArgumentParser
 
 from collections import Counter, defaultdict
@@ -28,7 +29,7 @@ def get_range(in_dir, first, last):
         first = sen_dirs[0]
     if last is None or last > sen_dirs[-1]:
         last = sen_dirs[-1]
-    return range(first,  last + 1)
+    return [n for n in sen_dirs if first <= n <= last]
 
 
 def get_counters(chart, pa_nodes, filters):
@@ -98,6 +99,7 @@ def get_rules(derivation):
 
 
 def main(in_dir, first, last, grammar_file, chart_filters, parser_type, boundary_nodes, k):
+    start_time = time.time()
     logprob = False
     nodelabels = True
     backward = False
@@ -187,9 +189,9 @@ def main(in_dir, first, last, grammar_file, chart_filters, parser_type, boundary
                         labels = get_labels(derivation)
                         rules = get_rules(derivation)
 
-                        matches_lines.append("%s\n" % shifted_derivation)
+                        matches_lines.append("%s;%g\n" % (shifted_derivation, n_score))
                         labels_lines.append("%s\n" % json.dumps(labels))
-                        rules_lines.append("%s\n" % format_derivation)
+                        rules_lines.append("%s\t#%g\n" % (format_derivation, n_score))
                         for grammar_nr, rule_str in sorted(rules.items()):
                             prob = rule_str.split(';')[1].strip()
                             rule = rule_str.split(';')[0].strip()
@@ -209,6 +211,8 @@ def main(in_dir, first, last, grammar_file, chart_filters, parser_type, boundary
                 f.writelines(labels_lines)
             with open(rules_file, "w") as f:
                 f.writelines(rules_lines)
+    elapsed_time = time.time() - start_time
+    print "Elapsed time: %d min %d sec" % (elapsed_time / 60, elapsed_time % 60)
 
 
 if __name__ == "__main__":
@@ -223,7 +227,7 @@ if __name__ == "__main__":
     parser.add_argument("-p", "--parser", default="basic", help="Specify which graph parser to use. 'td': the tree decomposition parser of Chiang et al, ACL 2013. 'basic': a basic generalization of CKY that matches rules according to an arbitrary visit order on edges (less efficient).")
     parser.add_argument("-bn", "--boundary_nodes", action="store_true", help="In the tree decomposition parser, use the full representation for graph fragments instead of the compact boundary node representation. This can provide some speedup for grammars with small rules.")
     parser.add_argument("-v", "--verbose", type=int, default=2, help="Stderr output verbosity: 0 (all off), 1 (warnings), 2 (info, default), 3 (details), 3 (debug)")
-    
+
     args = parser.parse_args()
 
     # Definition of logger output verbosity levels 
@@ -233,7 +237,7 @@ if __name__ == "__main__":
                3:{log.err, log.warn, log.info, log.chatter},
                4:{log.err, log.warn, log.chatter, log.info, log.debug}
               }[args.verbose]
-    
+
     main(args.in_dir,
          args.first,
          args.last,

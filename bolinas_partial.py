@@ -105,6 +105,9 @@ def main(in_dir, first, last, grammar_file, chart_filters, parser_type, boundary
     backward = False
     k_max = 1000
 
+    log_file = "log.txt"
+    log_lines = []
+
     for filter in chart_filters:
         assert filter in ['basic', 'max', 'prec', 'rec']
 
@@ -122,34 +125,40 @@ def main(in_dir, first, last, grammar_file, chart_filters, parser_type, boundary
 
     parser = parser_class(grammar)
 
-    for i in get_range(in_dir, first, last):
-        print "\nProcessing sen %d\n" % i
-        sen_dir = os.path.join(in_dir, str(i))
+    score_disorder_collector = {}
+
+    for sen_idx in get_range(in_dir, first, last):
+        print "\nProcessing sen %d\n" % sen_idx
+        sen_dir = os.path.join(in_dir, str(sen_idx))
 
         preproc_dir = os.path.join(sen_dir, "preproc")
-        graph_file = os.path.join(preproc_dir, "sen" + str(i) + ".graph")
-        with open(os.path.join(preproc_dir, "sen" + str(i) + "_pa_nodes.json")) as f:
+        graph_file = os.path.join(preproc_dir, "sen" + str(sen_idx) + ".graph")
+        with open(os.path.join(preproc_dir, "sen" + str(sen_idx) + "_pa_nodes.json")) as f:
             pa_nodes = json.load(f)
 
         bolinas_dir = os.path.join(sen_dir, "bolinas")
         if not os.path.exists(bolinas_dir):
             os.makedirs(bolinas_dir)
-        match_file = os.path.join(bolinas_dir, "sen" + str(i) + "_matches.graph")
-        labels_file = os.path.join(bolinas_dir, "sen" + str(i) + "_predicted_labels.txt")
-        rules_file = os.path.join(bolinas_dir, "sen" + str(i) + "_derivation.txt")
+        match_file = os.path.join(bolinas_dir, "sen" + str(sen_idx) + "_matches.graph")
+        labels_file = os.path.join(bolinas_dir, "sen" + str(sen_idx) + "_predicted_labels.txt")
+        rules_file = os.path.join(bolinas_dir, "sen" + str(sen_idx) + "_derivation.txt")
+        sen_log_file = os.path.join(bolinas_dir, "sen" + str(sen_idx) + ".log")
 
         parse_generator = parser.parse_graphs(
             (Hgraph.from_string(x) for x in fileinput.input(graph_file)), partial=True, max_steps=10000)
-    
+
         for chart in parse_generator:
             if "START" not in chart:
                 print "No derivation found"
                 continue
+
             matches_lines = []
             labels_lines = []
             rules_lines = []
+            sen_log_lines = []
             matches_output = defaultdict(list)
             counters = get_counters(chart, pa_nodes, chart_filters)
+
             for chart_filter in chart_filters:
                 if chart_filter == "max":
                     filtered_chart = filter_chart(chart, pa_nodes, chart_filter, sorted(counters[chart_filter].items())[-1][0])
@@ -166,6 +175,8 @@ def main(in_dir, first, last, grammar_file, chart_filters, parser_type, boundary
 
                 kbest_unique = {}
                 kbest = filtered_chart.kbest('START', k_max)
+                last_score = None
+
                 for score, derivation in kbest:
                     final_item = derivation[1]["START"][0]
                     nodes = sorted(list(final_item.nodeset), key=lambda node: int(node[1:]))
@@ -180,8 +191,19 @@ def main(in_dir, first, last, grammar_file, chart_filters, parser_type, boundary
                 matches_lines.append("%s\n" % chart_filter)
                 labels_lines.append("%s\n" % chart_filter)
                 rules_lines.append("%s\n" % chart_filter)
+
+                ki = 1
+                score_disorder = {}
                 for nodes, (score, derivation) in kbest_unique.items():
                     n_score = score if logprob else math.exp(score)
+
+                    new_score = score
+                    if last_score:
+                        if new_score > last_score:
+                            order_str = "%d-%d" % (ki - 1, ki)
+                            score_disorder[order_str] = (last_score, new_score)
+                    last_score = new_score
+
                     try:
                         shifted_derivation = output.print_shifted(derivation)
                         matches_output[chart_filter].append(shifted_derivation)
@@ -197,22 +219,40 @@ def main(in_dir, first, last, grammar_file, chart_filters, parser_type, boundary
                             rule = rule_str.split(';')[0].strip()
                             rules_lines.append("%s\t%.2f\t%s\n" % (grammar_nr, float(prob), rule))
                         rules_lines.append("\n")
-
-                        print "\n%s" % nodes
-                        print "\n%s" % chart_filter
-                        print "%s\t#%g" % (format_derivation, n_score)
-                        print "%s\t#%g" % (output.apply_graph_derivation(derivation).to_string(newline=False), n_score)
-                        print "%s" % shifted_derivation
+                        sen_log_lines.append("\nk%d:\t%s" % (ki, nodes))
                     except DerivationException, e:
                         log.err("Could not construct derivation: '%s'. Skipping." % e.message)
+                    ki += 1
+                sen_log_lines.append("\n\n")
+                for i, val in score_disorder.items():
+                    sen_log_lines.append("%s: %g / %g\n" % (i, val[0], val[1]))
+                score_disorder_collector[sen_idx] = (len(score_disorder.items()), ki-2)
             with open(match_file, "w") as f:
                 f.writelines(matches_lines)
             with open(labels_file, "w") as f:
                 f.writelines(labels_lines)
             with open(rules_file, "w") as f:
                 f.writelines(rules_lines)
+            with open(sen_log_file, "w") as f:
+                f.writelines(sen_log_lines)
+
     elapsed_time = time.time() - start_time
-    print "Elapsed time: %d min %d sec" % (elapsed_time / 60, elapsed_time % 60)
+    time_str = "Elapsed time: %d min %d sec" % (elapsed_time / 60, elapsed_time % 60)
+    print time_str
+    log_lines.append(time_str)
+    log_lines.append("\n")
+    num_sem = len(score_disorder_collector.keys())
+    sum_score_disorder = sum([val[0] for val in score_disorder_collector.values()])
+    log_lines.append("Number of sentences: %d\n" % num_sem)
+    log_lines.append("Sum of score disorders: %d\n" % sum_score_disorder)
+    avg_str = "Average score disorders: %.2f\n" % (sum_score_disorder / float(num_sem))
+    log_lines.append(avg_str)
+    log_lines.append("\n")
+    for i, val in score_disorder_collector.items():
+        log_lines.append("%d: %d / %d\n" % (i, val[0], val[1]))
+    print avg_str
+    with open(log_file, "w") as f:
+        f.writelines(log_lines)
 
 
 if __name__ == "__main__":

@@ -173,7 +173,8 @@ def main(in_dir, first, last, grammar_file, chart_filters, parser_type, boundary
                 else:
                     filtered_chart = copy(chart)
 
-                kbest_unique = {}
+                kbest_unique_nodes = set()
+                kbest_unique_derivations = []
                 kbest = filtered_chart.kbest('START', k_max)
                 last_score = None
 
@@ -181,12 +182,14 @@ def main(in_dir, first, last, grammar_file, chart_filters, parser_type, boundary
                     final_item = derivation[1]["START"][0]
                     nodes = sorted(list(final_item.nodeset), key=lambda node: int(node[1:]))
                     nodes_str = " ".join(nodes)
-                    if nodes_str not in kbest_unique:
-                        kbest_unique[nodes_str] = (score, derivation)
-                    if len(kbest_unique.keys()) >= k:
+                    if nodes_str not in kbest_unique_nodes:
+                        kbest_unique_nodes.add(nodes_str)
+                        kbest_unique_derivations.append((score, derivation))
+                    if len(kbest_unique_derivations) >= k:
                         break
-                if len(kbest_unique.keys()) < k:
-                    log.info("Found only %i derivations." % len(kbest_unique.keys()))
+                assert len(kbest_unique_derivations) == len(kbest_unique_nodes)
+                if len(kbest_unique_derivations) < k:
+                    log.info("Found only %i derivations." % len(kbest_unique_derivations))
 
                 matches_lines.append("%s\n" % chart_filter)
                 labels_lines.append("%s\n" % chart_filter)
@@ -194,7 +197,7 @@ def main(in_dir, first, last, grammar_file, chart_filters, parser_type, boundary
 
                 ki = 1
                 score_disorder = {}
-                for nodes, (score, derivation) in kbest_unique.items():
+                for (score, derivation) in kbest_unique_derivations:
                     n_score = score if logprob else math.exp(score)
 
                     new_score = score

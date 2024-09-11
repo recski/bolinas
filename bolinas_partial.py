@@ -98,7 +98,7 @@ def get_rules(derivation):
         return ret
 
 
-def main(in_dir, first, last, grammar_file, chart_filters, parser_type, boundary_nodes, k):
+def main(in_dir, out_dir, first, last, grammar_file, chart_filters, parser_type, boundary_nodes, k):
     start_time = time.time()
     logprob = False
     nodelabels = True
@@ -129,14 +129,15 @@ def main(in_dir, first, last, grammar_file, chart_filters, parser_type, boundary
 
     for sen_idx in get_range(in_dir, first, last):
         print "\nProcessing sen %d\n" % sen_idx
-        sen_dir = os.path.join(in_dir, str(sen_idx))
+        sen_dir_in = os.path.join(in_dir, str(sen_idx))
+        sen_dir_out = os.path.join(out_dir, str(sen_idx))
 
-        preproc_dir = os.path.join(sen_dir, "preproc")
+        preproc_dir = os.path.join(sen_dir_in, "preproc")
         graph_file = os.path.join(preproc_dir, "sen" + str(sen_idx) + ".graph")
         with open(os.path.join(preproc_dir, "sen" + str(sen_idx) + "_pa_nodes.json")) as f:
             pa_nodes = json.load(f)
 
-        bolinas_dir = os.path.join(sen_dir, "bolinas")
+        bolinas_dir = os.path.join(sen_dir_out, "bolinas")
         if not os.path.exists(bolinas_dir):
             os.makedirs(bolinas_dir)
         match_file = os.path.join(bolinas_dir, "sen" + str(sen_idx) + "_matches.graph")
@@ -262,6 +263,7 @@ if __name__ == "__main__":
     parser = ArgumentParser(description ="Bolinas is a toolkit for synchronous hyperedge replacement grammars.")
     parser.add_argument("-g", "--grammar_file", help="A hyperedge replacement grammar (HRG) or synchronous HRG (SHRG).")
     parser.add_argument("-i", "--in-dir", type=str)
+    parser.add_argument("-o", "--out-dir", type=str)
     parser.add_argument("-f", "--first", type=int)
     parser.add_argument("-l", "--last", type=int)
     parser.add_argument('-c', '--chart-filters', nargs='+', default=["basic"], help="A list of 'basic' (no filters), 'max' (biggest overlaps), 'prec' (best precision) or 'rec' (best recall). 'prec' and 'rec' only works if gold data is provided.")
@@ -282,6 +284,7 @@ if __name__ == "__main__":
               }[args.verbose]
 
     main(args.in_dir,
+         args.out_dir,
          args.first,
          args.last,
          args.grammar_file,

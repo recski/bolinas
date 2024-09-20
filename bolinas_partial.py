@@ -5,17 +5,15 @@ import os.path
 import fileinput
 import math
 import time
+
 from argparse import ArgumentParser
-
-from collections import Counter, defaultdict
-from copy import copy
-
 from common.hgraph.hgraph import Hgraph
 from common import log
 from common import output
 from common.exceptions import DerivationException
 from common.grammar import Grammar
 from common.oie import get_labels
+from filter.chart_filter import get_counters, get_filtered_chart
 from parser.parser import Parser
 from parser.vo_rule import VoRule
 from parser_td.td_rule import TdRule
@@ -30,57 +28,6 @@ def get_range(in_dir, first, last):
     if last is None or last > sen_dirs[-1]:
         last = sen_dirs[-1]
     return [n for n in sen_dirs if first <= n <= last]
-
-
-def get_counters(chart, pa_nodes, filters):
-    graph_sizes = Counter()
-    intersect_sizes = Counter()
-    diff_sizes = Counter()
-    for split in chart["START"]:
-        assert len(split.items()) == 1
-        if "max" in filters:
-            graph_size = len(split["START"].nodeset)
-            graph_sizes[graph_size] += 1
-        if "prec" in filters:
-            diff = set(split["START"].nodeset) - set(pa_nodes)
-            diff_size = len(diff)
-            diff_sizes[diff_size] += 1
-        if "rec" in filters:
-            intersect = set(pa_nodes) & set(split["START"].nodeset)
-            intersect_size = len(intersect)
-            intersect_sizes[intersect_size] += 1
-    ret = dict()
-    if "max" in filters:
-        ret["max"] = graph_sizes
-    if "prec" in filters:
-        ret["prec"] = diff_sizes
-    if "rec" in filters:
-        ret["rec"] = intersect_sizes
-    return ret
-
-
-def filter_chart(chart, pa_nodes, chart_filter, boundary_value):
-    ret = copy(chart)
-    derivations_to_keep = []
-    for split in chart["START"]:
-        assert len(split.items()) == 1
-        if chart_filter == "max":
-            graph_size = len(split["START"].nodeset)
-            if graph_size >= boundary_value:
-                derivations_to_keep.append(split)
-        elif chart_filter == "prec":
-            diff = set(split["START"].nodeset) - set(pa_nodes)
-            diff_size = len(diff)
-            if diff_size <= boundary_value:
-                derivations_to_keep.append(split)
-        elif chart_filter == "rec":
-            intersect = set(pa_nodes) & set(split["START"].nodeset)
-            intersect_size = len(intersect)
-            if intersect_size >= boundary_value:
-                derivations_to_keep.append(split)
-    del ret["START"]
-    ret["START"] = derivations_to_keep
-    return ret
 
 
 def get_rules(derivation):
@@ -138,12 +85,6 @@ def main(in_dir, out_dir, first, last, grammar_file, chart_filters, parser_type,
             pa_nodes = json.load(f)
 
         bolinas_dir = os.path.join(sen_dir_out, "bolinas")
-        if not os.path.exists(bolinas_dir):
-            os.makedirs(bolinas_dir)
-        match_file = os.path.join(bolinas_dir, "sen" + str(sen_idx) + "_matches.graph")
-        labels_file = os.path.join(bolinas_dir, "sen" + str(sen_idx) + "_predicted_labels.txt")
-        rules_file = os.path.join(bolinas_dir, "sen" + str(sen_idx) + "_derivation.txt")
-        sen_log_file = os.path.join(bolinas_dir, "sen" + str(sen_idx) + ".log")
 
         parse_generator = parser.parse_graphs(
             (Hgraph.from_string(x) for x in fileinput.input(graph_file)), partial=True, max_steps=10000)
@@ -153,26 +94,14 @@ def main(in_dir, out_dir, first, last, grammar_file, chart_filters, parser_type,
                 print "No derivation found"
                 continue
 
-            matches_lines = []
-            labels_lines = []
-            rules_lines = []
-            sen_log_lines = []
-            matches_output = defaultdict(list)
             counters = get_counters(chart, pa_nodes, chart_filters)
-
             for chart_filter in chart_filters:
-                if chart_filter == "max":
-                    filtered_chart = filter_chart(chart, pa_nodes, chart_filter, sorted(counters[chart_filter].items())[-1][0])
-                elif chart_filter == "prec":
-                    filtered_chart = filter_chart(chart, pa_nodes, chart_filter, sorted(counters[chart_filter].items())[0][0])
-                    counter = get_counters(filtered_chart, pa_nodes, ["rec"])
-                    filtered_chart = filter_chart(filtered_chart, pa_nodes, "rec", sorted(counter["rec"].items())[-1][0])
-                elif chart_filter == "rec":
-                    filtered_chart = filter_chart(chart, pa_nodes, chart_filter, sorted(counters[chart_filter].items())[-1][0])
-                    counter = get_counters(filtered_chart, pa_nodes, ["prec"])
-                    filtered_chart = filter_chart(filtered_chart, pa_nodes, "prec", sorted(counter["prec"].items())[0][0])
-                else:
-                    filtered_chart = copy(chart)
+                matches_lines = []
+                labels_lines = []
+                rules_lines = []
+                sen_log_lines = []
+
+                filtered_chart = get_filtered_chart(chart, pa_nodes, chart_filter, counters)
 
                 kbest_unique_nodes = set()
                 kbest_unique_derivations = []
@@ -192,10 +121,6 @@ def main(in_dir, out_dir, first, last, grammar_file, chart_filters, parser_type,
                 if len(kbest_unique_derivations) < k:
                     log.info("Found only %i derivations." % len(kbest_unique_derivations))
 
-                matches_lines.append("%s\n" % chart_filter)
-                labels_lines.append("%s\n" % chart_filter)
-                rules_lines.append("%s\n" % chart_filter)
-
                 ki = 1
                 score_disorder = {}
                 for (score, derivation) in kbest_unique_derivations:
@@ -210,7 +135,6 @@ def main(in_dir, out_dir, first, last, grammar_file, chart_filters, parser_type,
 
                     try:
                         shifted_derivation = output.print_shifted(derivation)
-                        matches_output[chart_filter].append(shifted_derivation)
                         format_derivation = output.format_derivation(derivation)
                         labels = get_labels(derivation)
                         rules = get_rules(derivation)
@@ -223,6 +147,8 @@ def main(in_dir, out_dir, first, last, grammar_file, chart_filters, parser_type,
                             rule = rule_str.split(';')[0].strip()
                             rules_lines.append("%s\t%.2f\t%s\n" % (grammar_nr, float(prob), rule))
                         rules_lines.append("\n")
+                        final_item = derivation[1]["START"][0]
+                        nodes = sorted(list(final_item.nodeset), key=lambda node: int(node[1:]))
                         sen_log_lines.append("\nk%d:\t%s" % (ki, nodes))
                     except DerivationException, e:
                         log.err("Could not construct derivation: '%s'. Skipping." % e.message)
@@ -231,14 +157,16 @@ def main(in_dir, out_dir, first, last, grammar_file, chart_filters, parser_type,
                 for i, val in score_disorder.items():
                     sen_log_lines.append("%s: %g / %g\n" % (i, val[0], val[1]))
                 score_disorder_collector[sen_idx] = (len(score_disorder.items()), ki-2)
-            with open(match_file, "w") as f:
-                f.writelines(matches_lines)
-            with open(labels_file, "w") as f:
-                f.writelines(labels_lines)
-            with open(rules_file, "w") as f:
-                f.writelines(rules_lines)
-            with open(sen_log_file, "w") as f:
-                f.writelines(sen_log_lines)
+
+                save_output(
+                    bolinas_dir,
+                    chart_filter,
+                    labels_lines,
+                    matches_lines,
+                    rules_lines,
+                    sen_idx,
+                    sen_log_lines,
+                )
 
     elapsed_time = time.time() - start_time
     time_str = "Elapsed time: %d min %d sec" % (elapsed_time / 60, elapsed_time % 60)
@@ -252,11 +180,27 @@ def main(in_dir, out_dir, first, last, grammar_file, chart_filters, parser_type,
     avg_str = "Average score disorders: %.2f\n" % (sum_score_disorder / float(num_sem))
     log_lines.append(avg_str)
     log_lines.append("\n")
-    for i, val in score_disorder_collector.items():
-        log_lines.append("%d: %d / %d\n" % (i, val[0], val[1]))
     print avg_str
     with open(log_file, "w") as f:
         f.writelines(log_lines)
+
+
+def save_output(bolinas_dir, chart_filter, labels_lines, matches_lines, rules_lines, sen_idx, sen_log_lines):
+    out_dir = os.path.join(bolinas_dir, chart_filter)
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+    match_file = os.path.join(out_dir, "sen" + str(sen_idx) + "_matches.graph")
+    labels_file = os.path.join(out_dir, "sen" + str(sen_idx) + "_predicted_labels.txt")
+    rules_file = os.path.join(out_dir, "sen" + str(sen_idx) + "_derivation.txt")
+    sen_log_file = os.path.join(out_dir, "sen" + str(sen_idx) + ".log")
+    with open(match_file, "w") as f:
+        f.writelines(matches_lines)
+    with open(labels_file, "w") as f:
+        f.writelines(labels_lines)
+    with open(rules_file, "w") as f:
+        f.writelines(rules_lines)
+    with open(sen_log_file, "w") as f:
+        f.writelines(sen_log_lines)
 
 
 if __name__ == "__main__":

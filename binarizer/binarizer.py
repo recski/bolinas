@@ -1,5 +1,5 @@
-from parser.rule import Rule
-from lib.exceptions import InvocationException, InputFormatException
+from common.exceptions import InputFormatException, InvocationException
+from common.grammar import Grammar
 
 MODE_STRING = 0
 MODE_TREE = 1
@@ -32,7 +32,7 @@ class Binarizer:
     else:
       raise InvocationException()
 
-    grammar = Rule.load_from_file(input_prefix)
+    grammar = Grammar.load_from_file(input_prefix)
     binarized_grammar = {}
 
     next_rule_id = 0
@@ -47,4 +47,4 @@ class Binarizer:
       for b_rule in b_rules:
         binarized_grammar[b_rule.rule_id] = b_rule
 
-    Rule.write_to_file(binarized_grammar, output_prefix)
+    Grammar.write_to_file(binarized_grammar, output_prefix)

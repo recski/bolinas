@@ -4,7 +4,7 @@ import re
 from common.exceptions import ParserError
 from common.grammar import DummyItem, Grammar
 from common import output
-from parser.vo_rule import VoRule 
+from parser_basic.vo_rule import VoRule
 import fileinput
 
 '''

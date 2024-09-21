@@ -14,8 +14,8 @@ from common.exceptions import DerivationException
 from common.grammar import Grammar
 from common.oie import get_labels
 from filter.chart_filter import get_counters, get_filtered_chart
-from parser.parser import Parser
-from parser.vo_rule import VoRule
+from parser_basic.parser import Parser
+from parser_basic.vo_rule import VoRule
 from parser_td.td_rule import TdRule
 from parser_td.td_item import Item
 from parser_td.parser_td import ParserTD

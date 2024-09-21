@@ -14,8 +14,8 @@ from common import log
 from common.exceptions import DerivationException
 from common.grammar import Grammar
 from common.oie import get_labels
-from parser.parser import Parser
-from parser.vo_rule import VoRule
+from parser_basic.parser import Parser
+from parser_basic.vo_rule import VoRule
 
 
 def get_range(in_dir, first, last):

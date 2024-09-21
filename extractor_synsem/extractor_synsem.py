@@ -5,7 +5,7 @@ from lib.tree import Tree
 import re
 from collections import defaultdict as ddict
 import itertools
-from parser.vo_rule import Rule
+from parser_basic.vo_rule import Rule
 import sys
 
 DEFAULT_COMPOSITION_DEPTH = 3

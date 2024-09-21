@@ -15,8 +15,8 @@ from common import log
 from common import output
 from common.exceptions import DerivationException
 from common.grammar import Grammar
-from parser.parser import Parser
-from parser.vo_rule import VoRule
+from parser_basic.parser import Parser
+from parser_basic.vo_rule import VoRule
 from parser_td.td_rule import TdRule
 from parser_td.td_item import Item
 from parser_td.parser_td import ParserTD

@@ -6,7 +6,7 @@ from collections import defaultdict, deque
 
 from common.cfg import NonterminalLabel
 from common.rule import Rule
-from parser.vo_rule import VoRule # Either rule class would do. 
+from parser_basic.vo_rule import VoRule # Either rule class would do. 
 from lib import fancy_tree
 import sys
 import itertools

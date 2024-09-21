@@ -6,9 +6,9 @@ from common import log
 from common.sample import sample
 from common.logarithm import logadd
 from common.logarithm import LOGZERO
-from parser.parser import Parser
+from parser_basic.parser import Parser
 from parser_td.parser_td import ParserTD
-from parser.vo_rule import VoRule
+from parser_basic.vo_rule import VoRule
 from parser_td.td_rule import TdRule
 from collections import defaultdict
 import math

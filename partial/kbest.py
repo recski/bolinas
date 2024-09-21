@@ -1,5 +1,5 @@
 #!/usr/bin/env python2
-
+import datetime
 import json
 import os.path
 import math
@@ -7,6 +7,7 @@ import pickle
 import time
 
 from argparse import ArgumentParser
+
 from common import log
 from common import output
 from common.exceptions import DerivationException
@@ -82,8 +83,20 @@ def main(data_dir, chart_filters, k, first, last):
     logprob = False
     k_max = 1000
 
-    log_file = "log.txt"
-    log_lines = []
+    log_file = os.path.join(
+        os.path.dirname(os.path.realpath(__file__)),
+        "log",
+        "kbest_" + data_dir.split("/")[-1] + ".log"
+    )
+    log_lines = [
+        "Chart filters: %s\n" % ",".join(chart_filters),
+        "k: %d\n" % k,
+        "Execution start: %s\n" % str(datetime.datetime.now()),
+    ]
+    if first:
+        log_lines.append("First: %d\n" % first)
+    if last:
+        log_lines.append("Last: %d\n" % last)
 
     for chart_filter in chart_filters:
         assert chart_filter in ['basic', 'max']

@@ -57,6 +57,45 @@ class Chart(dict):
     A CKY style parse chart that can return k-best derivations and can return inside and outside probabilities.
     """
 
+    def derivations(self, item):
+        """
+        Return all derivations from this chart.
+        """
+
+        if item == "START":
+            rprob = 0.0
+        else:
+            rprob = item.rule.weight
+
+        # If item is a leaf, just return it and its probability
+        if not item in self: 
+            if item == "START":
+                log.info("No derivations.")
+                return []
+            else:
+                return [(rprob, item)]
+
+        pool = []
+        # Find all options for this rule.
+        # Compute all for each possible split and add to pool.
+        for split in self[item]:
+            nts, children = zip(*split.items())
+            kbest_each_child = [self.derivations(child) for child in children]
+
+            all_combinations = list(itertools.product(*kbest_each_child))
+
+            combinations_for_sorting = []
+            for combination in all_combinations:
+                 weights, trees = zip(*combination)
+                 heapq.heappush(combinations_for_sorting,(sum(weights)+rprob,trees))
+
+            for prob, trees in combinations_for_sorting:
+                new_tree = (item, dict(zip(nts, trees)))
+                heapq.heappush(pool, (prob, new_tree))
+
+        return sorted(pool, reverse=True)
+
+
     def kbest(self, item, k):
         """
         Return the k-best derivations from this chart. 

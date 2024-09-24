@@ -62,7 +62,7 @@ def main(in_dir, out_dir, first, last, grammar_file, parser_type, boundary_nodes
         sen_dir_in = os.path.join(in_dir, str(sen_idx))
         sen_dir_out = os.path.join(out_dir, str(sen_idx))
         preproc_dir = os.path.join(sen_dir_in, "preproc")
-        graph_file = os.path.join(preproc_dir, "sen" + str(sen_idx) + ".graph")
+        graph_file = os.path.join(preproc_dir, "pos_edge.graph")
 
         bolinas_dir = os.path.join(sen_dir_out, "bolinas")
         if not os.path.exists(bolinas_dir):

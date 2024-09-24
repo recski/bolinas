@@ -1,0 +1,34 @@
+{
+    "preproc_dir": "dev_preproc",
+    "model_dir": "dev_gr100",
+    "filters":
+    {
+        "basic":
+        {
+            "ignore": true,
+            "chart_filter": "basic",
+            "k": 10
+        },
+        "max":
+        {
+            "ignore": true,
+            "chart_filter": "max",
+            "k": 10
+        },
+        "prec":
+        {
+            "ignore": false,
+            "pr_metric": "prec"
+        },
+        "rec":
+        {
+            "ignore": false,
+            "pr_metric": "rec"
+        },
+        "f1":
+        {
+            "ignore": false,
+            "pr_metric": "f1"
+        }
+    }
+}

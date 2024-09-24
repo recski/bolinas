@@ -1,42 +1,27 @@
 #!/usr/bin/env python2
 import datetime
 import json
-import os.path
 import math
+import os.path
 import pickle
 import time
 
 from argparse import ArgumentParser
+from copy import copy
 
 from common import log
 from common import output
 from common.exceptions import DerivationException
-from common.oie import get_labels
-from partial.chart_filter import get_counters, get_filtered_chart
+from partial.filter.pr_filter import filter_for_pr
+from partial.filter.size_filter import filter_for_size
+from partial.oie import get_labels, get_rules
 from partial.utils import get_range
 
 
-def get_rules(derivation):
-    if type(derivation) is not tuple:
-        if derivation == "START":
-            return {}
-        return {derivation.rule.rule_id: str(derivation.rule)}
-    else:
-        ret = {}
-        items = [c for (_, c) in derivation[1].items()] + [derivation[0]]
-        for item in items:
-            for (k, v) in get_rules(item).items():
-                assert k not in ret or v == ret[k]
-                ret[k] = v
-        return ret
-
-
-def get_k_best_unique_derivation(filtered_chart, k, k_max):
+def get_k_best_unique_derivation(chart, k):
     kbest_unique_nodes = set()
     kbest_unique_derivations = []
-    kbest = filtered_chart.kbest('START', k_max)
-    last_score = None
-    for score, derivation in kbest:
+    for score, derivation in chart:
         final_item = derivation[1]["START"][0]
         nodes = sorted(list(final_item.nodeset), key=lambda node: int(node[1:]))
         nodes_str = " ".join(nodes)
@@ -48,10 +33,10 @@ def get_k_best_unique_derivation(filtered_chart, k, k_max):
     assert len(kbest_unique_derivations) == len(kbest_unique_nodes)
     if len(kbest_unique_derivations) < k:
         log.info("Found only %i derivations." % len(kbest_unique_derivations))
-    return kbest_unique_derivations, last_score
+    return kbest_unique_derivations
 
 
-def extract_for_kth_derivation(derivation, n_score, matches_lines, labels_lines, rules_lines, sen_log_lines, k):
+def extract_for_kth_derivation(derivation, n_score, matches_lines, labels_lines, rules_lines, sen_log_lines, ki):
     shifted_derivation = output.print_shifted(derivation)
     matches_lines.append("%s;%g\n" % (shifted_derivation, n_score))
 
@@ -69,7 +54,7 @@ def extract_for_kth_derivation(derivation, n_score, matches_lines, labels_lines,
 
     final_item = derivation[1]["START"][0]
     nodes = sorted(list(final_item.nodeset), key=lambda node: int(node[1:]))
-    sen_log_lines.append("\nk%d:\t%s" % (k, nodes))
+    sen_log_lines.append("\nk%d:\t%s" % (ki, nodes))
 
 
 def save_output(outputs):
@@ -78,34 +63,41 @@ def save_output(outputs):
             f.writelines(lines)
 
 
-def main(data_dir, chart_filters, k, first, last):
+def get_gold_labels(preproc_dir, sen_idx):
+    gold_labels = []
+    preproc_path = os.path.join(preproc_dir, str(sen_idx), "preproc")
+    files = [fn for fn in os.listdir(preproc_path) if fn.endswith("_gold_labels.json")]
+    for fn in files:
+        with open(os.path.join(preproc_path, fn)) as f:
+            gold_labels.append(json.load(f))
+    return gold_labels
+
+
+def main(data_dir, config_file):
     start_time = time.time()
     logprob = False
-    k_max = 1000
+    config = json.load(open(config_file))
 
     log_file = os.path.join(
         os.path.dirname(os.path.realpath(__file__)),
         "log",
-        "kbest_" + data_dir.split("/")[-1] + ".log"
+        "kbest_" + config["model_dir"] + ".log"
     )
     log_lines = [
-        "Chart filters: %s\n" % ",".join(chart_filters),
-        "k: %d\n" % k,
         "Execution start: %s\n" % str(datetime.datetime.now()),
     ]
+    first = config.get("first", None)
+    last = config.get("last", None)
     if first:
         log_lines.append("First: %d\n" % first)
     if last:
         log_lines.append("Last: %d\n" % last)
 
-    for chart_filter in chart_filters:
-        assert chart_filter in ['basic', 'max']
-
     score_disorder_collector = {}
-
-    for sen_idx in get_range(data_dir, first, last):
+    model_dir = os.path.join(data_dir, config["model_dir"])
+    for sen_idx in get_range(model_dir, first, last):
         print "\nProcessing sen %d\n" % sen_idx
-        sen_dir_out = os.path.join(data_dir, str(sen_idx))
+        sen_dir_out = os.path.join(model_dir, str(sen_idx))
 
         bolinas_dir = os.path.join(sen_dir_out, "bolinas")
         chart_file = os.path.join(bolinas_dir, "sen" + str(sen_idx) + "_chart.pickle")
@@ -119,20 +111,46 @@ def main(data_dir, chart_filters, k, first, last):
             print "No derivation found"
             continue
 
-        counters = get_counters(chart, chart_filters)
-        for chart_filter in chart_filters:
+        gold_labels = get_gold_labels(os.path.join(data_dir, config["preproc_dir"]), sen_idx)
+        for name, c in config["filters"].items():
+            if c.get("ignore", False):
+                continue
+            print "Processing " + name
             matches_lines = []
             labels_lines = []
             rules_lines = []
             sen_log_lines = []
 
-            filtered_chart = get_filtered_chart(chart, chart_filter, counters)
-            k_best_unique_derivations, last_score = get_k_best_unique_derivation(filtered_chart, k, k_max)
+            filtered_chart = copy(chart)
+            sen_log_lines.append("Chart 'START' length: %d\n" % len(filtered_chart["START"]))
+            if "chart_filter" in c:
+                chart_filter = c["chart_filter"]
+                assert chart_filter in ["basic", "max"]
+                filtered_chart = filter_for_size(chart, chart_filter)
+            sen_log_lines.append("Chart 'START' length after size filter: %d\n" % len(filtered_chart["START"]))
 
+            derivations = filtered_chart.derivations("START")
+
+            assert ("k" in c and "pr_metric" not in c) or ("k" not in c and "pr_metric" in c)
+
+            if "k" in c:
+                k_best_unique_derivations = get_k_best_unique_derivation(derivations, c["k"])
+            elif "pr_metric" in c:
+                metric = c["pr_metric"]
+                assert metric in ["prec", "rec", "f1"]
+                k_best_unique_derivations = filter_for_pr(derivations, gold_labels, metric)
+            else:
+                print "Neither 'k' nor 'pr_metric' is set"
+                continue
+
+            last_score = None
             score_disorder = {}
             for i, (score, derivation) in enumerate(k_best_unique_derivations):
                 ki = i + 1
-                n_score = score if logprob else math.exp(score)
+                if "k" in c:
+                    n_score = score if logprob else math.exp(score)
+                else:
+                    n_score = score
 
                 new_score = score
                 if last_score:
@@ -149,7 +167,7 @@ def main(data_dir, chart_filters, k, first, last):
                         labels_lines,
                         rules_lines,
                         sen_log_lines,
-                        k,
+                        ki,
                     )
                 except DerivationException, e:
                     log.err("Could not construct derivation: '%s'. Skipping." % e.message)
@@ -158,7 +176,7 @@ def main(data_dir, chart_filters, k, first, last):
                 sen_log_lines.append("%s: %g / %g\n" % (i, val[0], val[1]))
             score_disorder_collector[sen_idx] = (len(score_disorder.items()), len(k_best_unique_derivations))
 
-            out_dir = os.path.join(bolinas_dir, chart_filter)
+            out_dir = os.path.join(bolinas_dir, name)
             if not os.path.exists(out_dir):
                 os.makedirs(out_dir)
             save_output(
@@ -166,11 +184,12 @@ def main(data_dir, chart_filters, k, first, last):
                     (os.path.join(out_dir, "sen" + str(sen_idx) + "_matches.graph"), matches_lines),
                     (os.path.join(out_dir, "sen" + str(sen_idx) + "_predicted_labels.txt"), labels_lines),
                     (os.path.join(out_dir, "sen" + str(sen_idx) + "_derivation.txt"), rules_lines),
-                    (os.path.join(out_dir, "sen" + str(sen_idx) + ".log"), log_lines),
+                    (os.path.join(out_dir, "sen" + str(sen_idx) + ".log"), sen_log_lines),
                 ]
             )
 
     elapsed_time = time.time() - start_time
+    log_lines.append("Execution finish: %s\n" % str(datetime.datetime.now()))
     time_str = "Elapsed time: %d min %d sec" % (elapsed_time / 60, elapsed_time % 60)
     print time_str
     log_lines.append(time_str)
@@ -190,12 +209,7 @@ def main(data_dir, chart_filters, k, first, last):
 if __name__ == "__main__":
     parser = ArgumentParser(description ="Bolinas is a toolkit for synchronous hyperedge replacement grammars.")
     parser.add_argument("-d", "--data-dir", type=str)
-    parser.add_argument("-f", "--first", type=int)
-    parser.add_argument("-l", "--last", type=int)
-    parser.add_argument('-c', '--chart-filters', nargs='+', default=["basic"],
-                        help="A list of 'basic' (no filters), 'max' (biggest overlaps).")
-    parser.add_argument("-k", type=int, default=1,
-                        help ="Generate K best derivations for the objects in the input file.")
+    parser.add_argument('-c', '--config-file')
     parser.add_argument("-v", "--verbose", type=int, default=2,
                         help="Stderr output verbosity: "
                              "0 (all off), 1 (warnings), 2 (info, default), 3 (details), 3 (debug)")
@@ -211,8 +225,5 @@ if __name__ == "__main__":
               }[args.verbose]
     main(
         args.data_dir,
-        args.chart_filters,
-        args.k,
-        args.first,
-        args.last,
+        args.config_file,
     )

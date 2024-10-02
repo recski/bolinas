@@ -13,6 +13,7 @@ from common import log
 from common import output
 from common.exceptions import DerivationException
 from partial.filter.pr_filter import filter_for_pr
+from partial.filter.preproc import get_gold_labels, get_pos_tags
 from partial.filter.size_filter import filter_for_size
 from partial.oie import get_labels, get_rules
 from partial.utils import get_range
@@ -63,16 +64,6 @@ def save_output(outputs):
             f.writelines(lines)
 
 
-def get_gold_labels(preproc_dir, sen_idx):
-    gold_labels = []
-    preproc_path = os.path.join(preproc_dir, str(sen_idx), "preproc")
-    files = [fn for fn in os.listdir(preproc_path) if fn.endswith("_gold_labels.json")]
-    for fn in files:
-        with open(os.path.join(preproc_path, fn)) as f:
-            gold_labels.append(json.load(f))
-    return gold_labels
-
-
 def main(data_dir, config_file):
     start_time = time.time()
     logprob = False
@@ -112,6 +103,20 @@ def main(data_dir, config_file):
             continue
 
         gold_labels = get_gold_labels(os.path.join(data_dir, config["preproc_dir"]), sen_idx)
+        top_order = json.load(open(os.path.join(
+            data_dir,
+            config["preproc_dir"],
+            str(sen_idx),
+            "preproc",
+            "pos_edge_graph_top_order.json"
+        )))
+        pos_tags = get_pos_tags(os.path.join(
+            data_dir,
+            config["preproc_dir"],
+            str(sen_idx),
+            "preproc",
+            "parsed.conll"
+        ))
         for name, c in config["filters"].items():
             if c.get("ignore", False):
                 continue
@@ -138,7 +143,7 @@ def main(data_dir, config_file):
             elif "pr_metric" in c:
                 metric = c["pr_metric"]
                 assert metric in ["prec", "rec", "f1"]
-                k_best_unique_derivations = filter_for_pr(derivations, gold_labels, metric)
+                k_best_unique_derivations = filter_for_pr(derivations, gold_labels, metric, pos_tags, top_order)
             else:
                 print "Neither 'k' nor 'pr_metric' is set"
                 continue

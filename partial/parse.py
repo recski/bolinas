@@ -49,7 +49,7 @@ def parse_sen(graph_parser, graph_file, chart_file):
 
 def main(in_dir, out_dir, first, last, grammar_file, parser_type, boundary_nodes):
     start_time = time.time()
-    logprob = False
+    logprob = True
     nodelabels = True
     backward = False
 

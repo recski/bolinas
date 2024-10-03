@@ -66,7 +66,7 @@ def save_output(outputs):
 
 def main(data_dir, config_file):
     start_time = time.time()
-    logprob = False
+    logprob = True
     config = json.load(open(config_file))
 
     log_file = os.path.join(

@@ -17,17 +17,17 @@
         },
         "prec":
         {
-            "ignore": false,
+            "ignore": true,
             "pr_metric": "prec"
         },
         "rec":
         {
-            "ignore": false,
+            "ignore": true,
             "pr_metric": "rec"
         },
         "f1":
         {
-            "ignore": false,
+            "ignore": true,
             "pr_metric": "f1"
         }
     }

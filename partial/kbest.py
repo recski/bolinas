@@ -76,7 +76,8 @@ def main(data_dir, config_file):
     )
     log_lines = [
         "Execution start: %s\n" % str(datetime.datetime.now()),
-    ]
+        "Chart filters: %s" % " ".join([f for f, c in config["filters"].items() if not c.get("ignore", False)]),
+        "\n"]
     first = config.get("first", None)
     last = config.get("last", None)
     if first:

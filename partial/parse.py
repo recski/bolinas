@@ -1,11 +1,13 @@
 #!/usr/bin/env python2
-
+import json
 import os.path
 import fileinput
 import pickle
 import time
 
 from argparse import ArgumentParser
+from datetime import datetime
+
 from common.hgraph.hgraph import Hgraph
 from common import log
 from common.grammar import Grammar
@@ -47,16 +49,28 @@ def parse_sen(graph_parser, graph_file, chart_file):
                 pickle.dump(chart, f)
 
 
-def main(in_dir, out_dir, first, last, grammar_file, parser_type, boundary_nodes):
+def main(data_dir, config_json, grammar_file, parser_type, boundary_nodes):
     start_time = time.time()
     logprob = True
     nodelabels = True
     backward = False
+    config = json.load(open(config_json))
+
+    log_file = os.path.join(
+        os.path.dirname(os.path.realpath(__file__)),
+        "log",
+        "parse_" + config["out_dir"] + ".log"
+    )
+    log_lines = ["Execution start: %s\n" % str(datetime.now())]
+    first = config.get("first", None)
+    last = config.get("last", None)
 
     grammar, parser_class = load_grammar(grammar_file, parser_type, boundary_nodes, backward, nodelabels, logprob)
 
     graph_parser = parser_class(grammar)
 
+    in_dir = os.path.join(data_dir, config["preproc_dir"])
+    out_dir = os.path.join(data_dir, config["out_dir"])
     for sen_idx in get_range(in_dir, first, last):
         print "\nProcessing sen %d\n" % sen_idx
         sen_dir_in = os.path.join(in_dir, str(sen_idx))
@@ -71,19 +85,22 @@ def main(in_dir, out_dir, first, last, grammar_file, parser_type, boundary_nodes
 
         parse_sen(graph_parser, graph_file, chart_file)
 
+
+    log_lines.append("Execution finish: %s\n" % str(datetime.now()))
     elapsed_time = time.time() - start_time
     time_str = "Elapsed time: %d min %d sec" % (elapsed_time / 60, elapsed_time % 60)
     print time_str
+    log_lines.append(time_str)
+    with open(log_file, "w") as f:
+        f.writelines(log_lines)
 
 
 if __name__ == "__main__":
     parser = ArgumentParser(description ="Parse graph inputs and save chart.")
-    parser.add_argument("-g", "--grammar_file", 
+    parser.add_argument("-g", "--grammar_file",
                         help="A hyperedge replacement grammar (HRG) or synchronous HRG (SHRG).")
-    parser.add_argument("-i", "--in-dir", type=str)
-    parser.add_argument("-o", "--out-dir", type=str)
-    parser.add_argument("-f", "--first", type=int)
-    parser.add_argument("-l", "--last", type=int)
+    parser.add_argument("-d", "--data-dir", type=str)
+    parser.add_argument("-c", "--config", type=str)
     parser.add_argument("-ot", "--output_type", type=str, default="derived",
                         help="Set the type of the output to be produced for each object in the input file. \n"
                              "'forest' produces parse forests.\n'derivation' produces k-best derivations.\n"
@@ -115,10 +132,8 @@ if __name__ == "__main__":
               }[args.verbose]
 
     main(
-        args.in_dir,
-        args.out_dir,
-        args.first,
-        args.last,
+        args.data_dir,
+        args.config,
         args.grammar_file,
         args.parser,
         args.boundary_nodes,
